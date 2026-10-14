@@ -31,6 +31,8 @@ jobs:
 
     outputs:
       version: ${{ steps.meta.outputs.version }}
+      build: ${{ steps.meta.outputs.build }}
+      label: ${{ steps.meta.outputs.label }}
       artifact_name: ${{ steps.meta.outputs.artifact_name }}
 
     steps:
@@ -62,11 +64,20 @@ jobs:
               | sed -E 's/.*MARKETING_VERSION:[[:space:]]*"?([^"]*)"?.*/\1/' \
               | tr -d '[:space:]')
             [ -z "$VERSION" ] && VERSION="0.0.0"
-            VERSION="${VERSION}+${{ github.run_number }}"
           fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "artifact_name=daidai-panel-${VERSION}-unsigned" >> "$GITHUB_OUTPUT"
-          echo "Resolved version: $VERSION"
+          # CFBundleShortVersionString 必须是纯 x.y.z（点分整数），不能带 +build 之类后缀，
+          # 否则 plist 不合法、且文件名里的 '+' 在下载 URL 中会被编码成 %2B。
+          # 构建号单独走 CURRENT_PROJECT_VERSION (= CFBundleVersion)。
+          VERSION="${VERSION%%+*}"
+          BUILD="${GITHUB_RUN_NUMBER}"
+          LABEL="${VERSION}-build${BUILD}"
+          {
+            echo "version=$VERSION"
+            echo "build=$BUILD"
+            echo "label=$LABEL"
+            echo "artifact_name=daidai-panel-${LABEL}-unsigned"
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved: version=$VERSION build=$BUILD label=$LABEL"
 
       - name: Install XcodeGen & ldid
         env:
@@ -114,6 +125,7 @@ jobs:
             ONLY_ACTIVE_ARCH=NO \
             ARCHS=arm64 \
             MARKETING_VERSION="${{ steps.meta.outputs.version }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.meta.outputs.build }}" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -189,21 +201,21 @@ jobs:
       - name: Rename IPA
         run: |
           set -e
-          mv dist/*.ipa "dist/daidai-panel-${{ needs.build.outputs.version }}.ipa"
+          mv dist/*.ipa "dist/daidai-panel-${{ needs.build.outputs.label }}.ipa"
           ls -lh dist
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.release_tag }}
-          name: daidai-panel iOS ${{ needs.build.outputs.version }}
+          name: daidai-panel iOS ${{ needs.build.outputs.version }} (build ${{ needs.build.outputs.build }})
           draft: false
           prerelease: false
           generate_release_notes: true
           body: |
             ## 代代面板 iOS ${{ needs.build.outputs.version }}
 
-            未签名 IPA，适用于 **TrollStore** 环境。装上就能在手机上跑 JS / PY 脚本，不需要 Linux、不需要 Docker。
+            构建号 `${{ needs.build.outputs.build }}`。未签名 IPA，适用于 **TrollStore** 环境。装上就能在手机上跑 JS / PY 脚本，不需要 Linux、不需要 Docker。
 
             ### 安装
             1. 下载下方 ipa 到设备

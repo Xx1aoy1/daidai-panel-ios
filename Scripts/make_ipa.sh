@@ -33,7 +33,13 @@ else
   echo "[daidai]   Frameworks：$(ls -1 "$APP_PATH/Frameworks" 2>/dev/null | wc -l | tr -d ' ') 个"
 fi
 
-VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist" 2>/dev/null || echo 1.0.0)"
+VERSION_RAW="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist" 2>/dev/null || echo 1.0.0)"
+# 文件名安全化：'+' / 空格 换成 '-'，其余非常规字符剔除。
+# 否则 '+' 在下载 URL 中会被解码成空格，导致 404。
+VERSION="$(printf '%s' "$VERSION_RAW" | tr '+ ' '--' | tr -cd 'A-Za-z0-9._-')"
+[ -z "$VERSION" ] && VERSION="1.0.0"
+BUILD_NO="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist" 2>/dev/null || echo 1)"
+echo "[daidai] 版本：${VERSION_RAW}（文件名用 ${VERSION}），构建号：${BUILD_NO}"
 
 rm -rf "$DIST_DIR/Payload" "$DIST_DIR/${APP_NAME}-${VERSION}-unsigned.ipa"
 mkdir -p "$DIST_DIR/Payload"
