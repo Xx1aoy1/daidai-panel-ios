@@ -1,0 +1,86 @@
+name: daidai-panel
+
+options:
+  bundleIdPrefix: com.daidai
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+  generateEmptyDirectories: true
+  xcodeVersion: "15.0"
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+    ALWAYS_SEARCH_USER_PATHS: "NO"
+    ENABLE_USER_SCRIPT_SANDBOXING: "NO"
+    ONLY_ACTIVE_ARCH: "NO"
+    ARCHS: "arm64"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    CLANG_ENABLE_MODULES: "YES"
+    GCC_C_LANGUAGE_STANDARD: gnu11
+    CODE_SIGN_IDENTITY: ""
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGN_ENTITLEMENTS: ""
+
+targets:
+  daidai-panel:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+        excludes:
+          - "Bridge/DaidaiPanel-Bridging-Header.h"
+      - path: Resources/web
+        type: folder
+      - path: Resources/silence.wav
+      - path: Resources/Info.plist
+        buildPhase: none
+    settings:
+      base:
+        PRODUCT_NAME: daidai-panel
+        PRODUCT_BUNDLE_IDENTIFIER: com.daidai.panel
+        INFOPLIST_FILE: Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "1.0.0"
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/Bridge/DaidaiPanel-Bridging-Header.h
+        HEADER_SEARCH_PATHS: "$(inherited) $(SRCROOT)/Sources/Runtime $(SRCROOT)/Sources/Bridge"
+        FRAMEWORK_SEARCH_PATHS: "$(inherited) $(SRCROOT)/Frameworks/Python.xcframework/ios-arm64"
+        SWIFT_EMIT_LOC_STRINGS: "NO"
+    dependencies:
+      - sdk: JavaScriptCore.framework
+      - sdk: AVFoundation.framework
+      - sdk: AVFAudio.framework
+      - sdk: CoreLocation.framework
+      - sdk: BackgroundTasks.framework
+      - sdk: Network.framework
+      - framework: Frameworks/Python.xcframework
+        embed: true
+        codeSign: false
+
+    postBuildScripts:
+      # 把 Python.xcframework 里的标准库搬进 .app，并把 lib-dynload 下的 .so
+      # 转换成 Frameworks/xxx.framework，否则 iOS 无法 dlopen 这些二进制模块。
+      - name: Install Python Runtime
+        shell: /bin/bash
+        basedOnDependencyAnalysis: false
+        script: |
+          /bin/bash "$SRCROOT/Scripts/install_python.sh"
+
+schemes:
+  daidai-panel:
+    build:
+      targets:
+        daidai-panel: all
+    run:
+      config: Debug
+    archive:
+      config: Release

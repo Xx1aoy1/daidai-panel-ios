@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>代代面板</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header>
+  <div class="title-row">
+    <h1>代代面板</h1>
+    <div id="status-line" style="font-size:12px;color:var(--muted)">加载中…</div>
+  </div>
+  <nav>
+    <button data-tab="overview" class="active">概览</button>
+    <button data-tab="scripts">脚本</button>
+    <button data-tab="logs">日志</button>
+    <button data-tab="env">环境变量</button>
+    <button data-tab="settings">设置</button>
+  </nav>
+</header>
+
+<main id="main"></main>
+
+<div id="modal-root"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

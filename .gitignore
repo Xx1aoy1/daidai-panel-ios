@@ -1,0 +1,27 @@
+# 构建产物
+build/
+dist/
+Payload/
+.verify/
+DerivedData/
+
+# XcodeGen 生成，不入库
+*.xcodeproj/
+*.xcworkspace/
+
+# 下载的依赖
+Frameworks/
+.cache/
+
+# 构建时拉取的第三方 Python 包
+Resources/py/site-packages/
+
+# macOS / Xcode
+.DS_Store
+xcuserdata/
+*.xcuserstate
+*.moved-aside
+
+# Python
+__pycache__/
+*.pyc

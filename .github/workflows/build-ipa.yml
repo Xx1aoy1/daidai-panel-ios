@@ -1,0 +1,220 @@
+name: Build unsigned IPA
+
+# 在 macOS runner 上编译出「未签名」的 .app，打成 .ipa，供 TrollStore 安装。
+# 推 v* tag 时自动创建 Release 并附上 ipa。
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: '手动触发时用于创建 Release 的 tag（留空则只产出 Artifact）'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build daidai-panel.ipa
+    runs-on: macos-14
+    timeout-minutes: 60
+
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      artifact_name: ${{ steps.meta.outputs.artifact_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select latest stable Xcode
+        run: |
+          set -e
+          echo "== available Xcodes =="
+          ls /Applications | grep -i '^Xcode' || true
+          LATEST=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -n "$LATEST" ]; then
+            sudo xcode-select -s "$LATEST/Contents/Developer"
+          fi
+          xcodebuild -version
+          swift --version
+
+      - name: Resolve version metadata
+        id: meta
+        run: |
+          set -e
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION=$(grep -m1 'MARKETING_VERSION:' project.yml \
+              | sed -E 's/.*MARKETING_VERSION:[[:space:]]*"?([^"]*)"?.*/\1/' \
+              | tr -d '[:space:]')
+            [ -z "$VERSION" ] && VERSION="0.0.0"
+            VERSION="${VERSION}+${{ github.run_number }}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=daidai-panel-${VERSION}-unsigned" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Install XcodeGen & ldid
+        env:
+          # 关掉 Homebrew 自动更新，runner 上 brew update 常要几分钟
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+          HOMEBREW_NO_ANALYTICS: 1
+        run: |
+          set -e
+          brew install xcodegen ldid
+          xcodegen --version
+          ldid -v 2>&1 | head -n 3 || true
+
+      - name: Cache Python.xcframework
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: python-apple-support-3.12-b11
+
+      - name: Fetch Python runtime (BeeWare Python.xcframework)
+        run: |
+          chmod +x Scripts/*.sh
+          ./Scripts/fetch_python.sh
+          echo "--- xcframework 结构 ---"
+          ls -la Frameworks/Python.xcframework/ios-arm64/ | head -20
+          ls -1 Frameworks/Python.xcframework/ios-arm64/Python.framework/Headers/ | head -5
+
+      - name: Vendor pure-Python packages
+        continue-on-error: true
+        run: ./Scripts/vendor_python_packages.sh
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml --use-cache
+
+      - name: Build (unsigned, arm64)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project daidai-panel.xcodeproj \
+            -scheme daidai-panel \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            ONLY_ACTIVE_ARCH=NO \
+            ARCHS=arm64 \
+            MARKETING_VERSION="${{ steps.meta.outputs.version }}" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            DEVELOPMENT_TEAM="" \
+            ENABLE_USER_SCRIPT_SANDBOXING=NO \
+            build 2>&1 | tail -150
+
+      - name: Verify app bundle
+        run: |
+          set -e
+          APP="build/Build/Products/Release-iphoneos/daidai-panel.app"
+          if [ ! -d "$APP" ]; then
+            echo "::error::.app 不存在：$APP"
+            find build/Build/Products -maxdepth 3 -print || true
+            exit 1
+          fi
+          echo "== .app 顶层 =="
+          ls -la "$APP" | head -40
+          echo
+          echo "== wx 面板前端 =="
+          ls -1 "$APP/web" 2>/dev/null || echo "  未找到 web/"
+          echo
+          echo "== Python 标准库 =="
+          ls -la "$APP/python/lib" 2>/dev/null || echo "  未找到 python/lib（Python 将不可用）"
+          echo
+          echo "== 转换后的扩展模块 =="
+          echo "  Frameworks 数量: $(ls -1 "$APP/Frameworks" 2>/dev/null | wc -l | tr -d ' ')"
+          echo "  .fwork 数量:    $(find "$APP/python/lib" -name '*.fwork' 2>/dev/null | wc -l | tr -d ' ')"
+          echo
+          echo "== 主二进制架构 =="
+          file "$APP/daidai-panel"
+
+      - name: Package unsigned IPA
+        run: ./Scripts/make_ipa.sh
+
+      - name: Verify IPA
+        run: |
+          set -e
+          IPA=$(ls dist/*.ipa | head -1)
+          echo "== 包结构 =="
+          unzip -l "$IPA" | head -n 20
+          echo
+          echo "== Info.plist 关键字段 =="
+          rm -rf .verify && mkdir -p .verify
+          unzip -o -q "$IPA" -d .verify
+          plutil -p .verify/Payload/daidai-panel.app/Info.plist \
+            | grep -E 'CFBundleIdentifier|CFBundleShortVersionString|CFBundleVersion|MinimumOSVersion|CFBundleDisplayName|UIBackgroundModes|BGTaskSchedulerPermittedIdentifiers' || true
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.artifact_name }}
+          path: dist/*.ipa
+          if-no-files-found: error
+          retention-days: 90
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download IPA
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
+          path: dist
+
+      - name: Rename IPA
+        run: |
+          set -e
+          mv dist/*.ipa "dist/daidai-panel-${{ needs.build.outputs.version }}.ipa"
+          ls -lh dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.release_tag }}
+          name: daidai-panel iOS ${{ needs.build.outputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## 代代面板 iOS ${{ needs.build.outputs.version }}
+
+            未签名 IPA，适用于 **TrollStore** 环境。装上就能在手机上跑 JS / PY 脚本，不需要 Linux、不需要 Docker。
+
+            ### 安装
+            1. 下载下方 ipa 到设备
+            2. 打开 **TrollStore** → 「Install IPA」 → 选择该 ipa
+            3. 首次启动后保持前台几秒让保活起来，之后切后台即可长期运行
+
+            ### 用法
+            - 手机浏览器打开 `http://127.0.0.1:5700` 使用内置面板
+            - 或在 App 内直接管理脚本、日志、环境变量
+            - 在「设置 → 允许局域网访问」后可换电脑浏览器管理
+
+            > 本 IPA 未签名，由 TrollStore 在安装时自动签名。请勿使用需要证书的工具安装。
+          files: |
+            dist/*.ipa
