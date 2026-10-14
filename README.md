@@ -49,11 +49,20 @@ git push -u origin main
 
 ### 2.2 拿产物
 
-构建大约 5–10 分钟。跑完：
+**已经有编译好的了** —— 直接去 **[Releases](https://github.com/Xx1aoy1/daidai-panel-ios/releases)**
+下载 `daidai-panel-<版本>-build<N>.ipa`，跳到第 3 节安装即可。不用自己编。
 
-**Actions → 那次运行 → 底部 Artifacts → `daidai-panel-unsigned-ipa`**
+自己编译的话，构建大约 2–5 分钟，两条路都能拿到产物：
 
-下载、解压，得到 `daidai-panel-1.0.0-unsigned.ipa`。
+- **Release** —— 推 `v*` tag（如 `git tag v1.0.0 && git push origin v1.0.0`）时自动创建，
+  附件就是 IPA，可直接分享下载链接。
+- **Artifact** —— `Actions → 那次运行 → 底部 Artifacts → daidai-panel-<版本>-build<N>-unsigned`，
+  下载得到 zip，解压里面是 IPA。
+
+> **命名约定**：`CFBundleShortVersionString` 是**纯 `x.y.z`**（不能带 `+`），
+> 构建号单独走 `CFBundleVersion`（= Actions 运行序号）。
+> IPA 文件名一律 ASCII 安全形式 `daidai-panel-<版本>-build<N>.ipa` ——
+> 因为 `+` 在下载 URL 里会被解码成空格，导致 404。
 
 ### 2.3 本地构建（如果你有 Mac）
 
