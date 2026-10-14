@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 /// 每个运行线程自己的日志出口（Python 的 stdout 回调没有上下文，
 /// 用 Thread.threadDictionary 定位当前归属）。

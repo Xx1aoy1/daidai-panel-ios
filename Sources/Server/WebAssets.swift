@@ -19,7 +19,7 @@ enum WebAssets {
 
         var url = root.appendingPathComponent(relative)
         var isDir: ObjCBool = false
-        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir {
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
             url = url.appendingPathComponent("index.html")
         }
         guard FileManager.default.fileExists(atPath: url.path) else {

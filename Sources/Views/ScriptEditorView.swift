@@ -91,7 +91,6 @@ struct ScriptEditorView: View {
                         }
                         dismiss()
                     }
-                    .bold()
                 }
             }
         }

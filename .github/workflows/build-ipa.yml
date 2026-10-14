@@ -120,7 +120,7 @@ jobs:
             CODE_SIGN_ENTITLEMENTS="" \
             DEVELOPMENT_TEAM="" \
             ENABLE_USER_SCRIPT_SANDBOXING=NO \
-            build 2>&1 | tail -150
+            build
 
       - name: Verify app bundle
         run: |

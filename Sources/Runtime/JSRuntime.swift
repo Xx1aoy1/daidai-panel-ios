@@ -34,7 +34,7 @@ final class JSRuntime {
     // MARK: - 原生桥
 
     private func installBridges() {
-        let ctx = context!
+        let ctx = context
 
         let logBlock: @convention(block) (String, String) -> Void = { [weak self] level, text in
             guard let self = self else { return }
